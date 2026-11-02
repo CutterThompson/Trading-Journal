@@ -1,0 +1,10 @@
+{
+  "name": "nq-journal-bridge",
+  "private": true,
+  "description": "Builds nqfb.js, the journal's small bridge to Firebase (sign-in + Firestore).",
+  "scripts": {
+    "build": "esbuild nqfb-entry.js --bundle --minify --format=iife --target=es2019 --legal-comments=none --outfile=nqfb.bundle.js"
+  },
+  "dependencies": { "firebase": "12.19.0" },
+  "devDependencies": { "esbuild": "0.25.10" }
+}
