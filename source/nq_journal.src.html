@@ -1362,10 +1362,17 @@ function autoSession() {
 }
 
 // Older trades used different session names — re-derive them from the time
+const RENAMED = { after: { 'Indifferent': 'Neutral' } };
 function normalizeSessions(sessions) {
   (sessions || []).forEach(s => {
     (s.trades || []).forEach(t => {
       if (t.session && SESSIONS.indexOf(t.session) === -1) t.session = sessionFor(t.time) || t.session;
+      const m = t.mind;
+      if (m && Object.keys(RENAMED).some(k => RENAMED[k][m[k]])) {
+        const fixed = Object.assign({}, m);
+        Object.keys(RENAMED).forEach(k => { if (RENAMED[k][fixed[k]]) fixed[k] = RENAMED[k][fixed[k]]; });
+        t.mind = fixed;
+      }
     });
   });
 }
@@ -1390,7 +1397,7 @@ const MIND = {
   before:     [['Calm & focused', 'good'], ['Patient', 'good'], ['Impatient', 'warn'], ['Bored', 'warn'], ['Overconfident', 'warn'], ['FOMO', 'bad'], ['Anxious', 'bad'], ['Revenge urge', 'bad']],
   conviction: [['High', 'good'], ['Medium', 'warn'], ['Low', 'bad'], ['Forced it', 'bad']],
   plan:       [['Yes, fully', 'good'], ['Mostly', 'warn'], ['No', 'bad'], ['Had no plan', 'bad']],
-  after:      [['Satisfied', 'good'], ['Indifferent', 'good'], ['Relieved', 'warn'], ['Left money behind', 'warn'], ['Held too long', 'warn'], ['Frustrated', 'bad'], ['Tilted', 'bad']]
+  after:      [['Satisfied', 'good'], ['Neutral', 'good'], ['Relieved', 'warn'], ['Left money behind', 'warn'], ['Held too long', 'warn'], ['Disappointed', 'warn'], ['Frustrated', 'bad'], ['Tilted', 'bad']]
 };
 const TONE = { 'None — I forced it': 'bad', 'Greedy — held too long': 'warn' };
 Object.keys(MIND).forEach(k => MIND[k].forEach(o => { TONE[o[0]] = o[1]; }));
