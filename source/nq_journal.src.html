@@ -317,6 +317,18 @@ textarea.note{flex:1 1 0;height:0;min-height:60px;overflow-y:auto;scrollbar-widt
 .btn.primary:disabled:hover{filter:none}
 
 /* ── Analytics ── */
+/* the head: title, what's on show (centred under the tabs), and how much to show */
+.page-head.an-head{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;column-gap:24px}
+.an-when{display:flex;align-items:center;justify-content:center;min-height:36px}
+.an-step{display:flex;align-items:center;gap:12px}
+.an-name{min-width:190px;text-align:center;font-stretch:125%;font-weight:560;font-size:20px;letter-spacing:-.005em;white-space:nowrap}
+.an-step .icon-btn{width:32px;height:32px}
+.icon-btn:disabled{opacity:.35;cursor:default}
+.icon-btn:disabled:hover{color:var(--text-2);background:none;border-color:var(--line-2)}
+.span-pick{justify-self:end;display:flex;gap:2px;padding:3px;background:var(--surface);border-radius:999px}
+.span-pick button{padding:6px 14px;border-radius:999px;color:var(--text-2);font-size:13px;font-weight:500;white-space:nowrap;transition:color .15s,background .15s}
+.span-pick button:hover{color:var(--text)}
+.span-pick button.on{background:var(--surface-2);color:var(--text)}
 .figs{display:grid;grid-template-columns:1.6fr repeat(4,minmax(0,1fr));gap:28px;align-items:end;padding-bottom:24px;border-bottom:1px solid var(--line)}
 .fig-v{font-size:24px;font-weight:600;line-height:1.1;letter-spacing:-.01em;white-space:nowrap}
 .fig.hero .fig-v{font-stretch:125%;font-weight:560;font-size:42px}
@@ -367,6 +379,8 @@ textarea.note{flex:1 1 0;height:0;min-height:60px;overflow-y:auto;scrollbar-widt
 .lb-count{position:absolute;left:0;right:0;bottom:22px;text-align:center;font-size:14px;color:rgba(255,255,255,.7);pointer-events:none}
 
 @media (max-width:1000px){
+  .page-head.an-head{grid-template-columns:minmax(0,1fr) auto}
+  .an-when{grid-column:1 / -1;grid-row:2}
   .trade-row{grid-template-columns:repeat(6,minmax(0,1fr));row-gap:20px}
   .f-time,.f-sess,.f-dir{grid-column:span 2}
   .f-out,.f-pnl{grid-column:span 3}
@@ -394,6 +408,10 @@ textarea.note{flex:1 1 0;height:0;min-height:60px;overflow-y:auto;scrollbar-widt
   .trade-row > .field{grid-column:auto}
   .notes-grid{grid-template-columns:1fr}
   .mind-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .page-head.an-head{grid-template-columns:minmax(0,1fr);row-gap:16px}
+  .span-pick{grid-row:2;justify-self:stretch}
+  .span-pick button{flex:1}
+  .an-when{grid-row:3}
   .box{padding:18px 18px 22px}
   .mantra{margin:28px auto 36px}
   .page-title{font-size:24px}
@@ -633,9 +651,22 @@ textarea.note{flex:1 1 0;height:0;min-height:60px;overflow-y:auto;scrollbar-widt
 
 <!-- ═══ ANALYTICS ═══ -->
 <section id="tab-analytics" class="panel">
-  <div class="page-head">
+  <div class="page-head an-head">
     <h1 class="page-title">Analytics</h1>
-    <span class="page-sub">Every trade you’ve logged</span>
+    <div class="an-when">
+      <span class="page-sub" id="an-all">Every trade you’ve logged</span>
+      <div class="an-step" id="an-step" hidden>
+        <button class="icon-btn" type="button" id="an-prev" onclick="anStep(-1)">‹</button>
+        <span class="an-name" id="an-name" aria-live="polite"></span>
+        <button class="icon-btn" type="button" id="an-next" onclick="anStep(1)">›</button>
+      </div>
+    </div>
+    <div class="span-pick" id="span-pick" role="group" aria-label="Show">
+      <button type="button" data-span="all" class="on" aria-pressed="true" onclick="anSpan('all')">All time</button>
+      <button type="button" data-span="year" aria-pressed="false" onclick="anSpan('year')">Year</button>
+      <button type="button" data-span="month" aria-pressed="false" onclick="anSpan('month')">Month</button>
+      <button type="button" data-span="week" aria-pressed="false" onclick="anSpan('week')">Week</button>
+    </div>
   </div>
   <div id="analytics-content"></div>
 </section>
@@ -699,7 +730,6 @@ let tradeScreenshots = [];
 let _editMode = null;
 
 function $(id) { return document.getElementById(id); }
-function todayStr() { return new Date().toDateString(); }
 function esc(s) {
   return String(s === null || s === undefined ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -737,9 +767,10 @@ function pageBottomPad() {
   return page + root;
 }
 
+// "today" is the trading day that's on now (see TRADING DAYS): its trades drive the loss dots and Done for today
 function deriveToday() {
-  const ts = S.allSessions.find(s => s.date === todayStr());
-  S.trades = ts ? (ts.trades || []) : [];
+  const ts = sessionMap()[calKey(new Date(currentTradingDay()))];
+  S.trades = ts ? ts.trades : [];
   S.lossCount = S.trades.filter(t => t.outcome === 'Loss').length;
 }
 
@@ -1230,15 +1261,15 @@ function pad2(n) { return String(n).padStart(2, '0'); }
 function nyParts() {
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+      timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
     }).formatToParts(new Date());
     const get = t => parts.find(p => p.type === t).value;
     let h = get('hour');
     if (h === '24') h = '00';
-    return { day: get('weekday'), time: h + ':' + get('minute') + ':' + get('second') };
+    return { y: +get('year'), m: +get('month'), d: +get('day'), day: get('weekday'), time: h + ':' + get('minute') + ':' + get('second') };
   } catch (e) {
     const n = new Date();
-    return { day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][n.getDay()], time: pad2(n.getHours()) + ':' + pad2(n.getMinutes()) + ':' + pad2(n.getSeconds()) };
+    return { y: n.getFullYear(), m: n.getMonth() + 1, d: n.getDate(), day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][n.getDay()], time: pad2(n.getHours()) + ':' + pad2(n.getMinutes()) + ':' + pad2(n.getSeconds()) };
   }
 }
 function nyNow() { return nyParts().time; }
@@ -1252,6 +1283,46 @@ function marketClosed(day, hhmm) {
   if (day === 'Fri') return t >= 1020;
   return t >= 1020 && t < 1080;
 }
+
+// ── TRADING DAYS, counted the way prop firms count them. NQ trades from 18:00 New York time (5 PM Central)
+//    one evening until 17:00 the next day, and that whole stretch is one trading day, named for the day it ends.
+//    So a trade at 18:00 or later counts for the next day, and Sunday evening counts for Monday.
+//    Trades are still kept under the date they were taken; the calendar, today and Analytics go by trading day.
+const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function minutesOf(hhmm) { const p = hhmm.split(':').map(Number); return p[0] * 60 + p[1]; }
+function nyDate(n) { return new Date(n.y, n.m - 1, n.d); }
+// the trading day of a trade taken on `date` at `hhmm` New York time
+function tradingDayOf(date, hhmm) {
+  let d = new Date(date);
+  if (isNaN(d)) return date;
+  if (timeValid(hhmm) && minutesOf(hhmm) >= 1080) d = addDays(d, 1);
+  while (d.getDay() === 0 || d.getDay() === 6) d = addDays(d, 1);
+  return d.toDateString();
+}
+function currentTradingDay() { const n = nyParts(); return tradingDayOf(nyDate(n).toDateString(), n.time.slice(0, 5)); }
+// the trading day that's on now or, while NQ is shut for the weekend, the Friday that just ended
+function latestTradingDay() {
+  const n = nyParts(), m = minutesOf(n.time.slice(0, 5));
+  const back = n.day === 'Sat' ? 1 : (n.day === 'Sun' && m < 1080) ? 2 : (n.day === 'Fri' && m >= 1080) ? 0 : -1;
+  return back < 0 ? new Date(currentTradingDay()) : addDays(nyDate(n), -back);
+}
+// the date of a trade being logged now: the last time its clock time came round while NQ was trading
+// (a time later than now was last night; a Friday trade logged over the weekend stays on Friday)
+function placedDate(hhmm) {
+  const n = nyParts();
+  let d = nyDate(n);
+  if (!timeValid(hhmm)) return d.toDateString();
+  if (minutesOf(hhmm) > minutesOf(n.time.slice(0, 5)) + 10) d = addDays(d, -1);
+  for (let k = 0; k < 7; k++) {
+    const c = addDays(d, -k);
+    if (!marketClosed(WEEKDAY[c.getDay()], hhmm)) return c.toDateString();
+  }
+  return d.toDateString();
+}
+// within a trading day, last night's trades come first
+function sessionMinute(hhmm) { if (!timeValid(hhmm)) return -1e4; const m = minutesOf(hhmm); return m >= 1080 ? m - 1440 : m; }
+function bySessionTime(a, b) { return sessionMinute(a.time) - sessionMinute(b.time); }
 
 function nyNowHHMM() { return nyNow().slice(0, 5); }
 
@@ -1364,8 +1435,20 @@ function autoSession() {
 // Older trades used different session names — re-derive them from the time
 const RENAMED = { after: { 'Indifferent': 'Neutral' } };
 function normalizeSessions(sessions) {
-  (sessions || []).forEach(s => {
+  if (!sessions) return;
+  // one list per date (a backup can repeat a date): fold a repeat into the first, keeping each trade once
+  const byDate = {};
+  for (let i = 0; i < sessions.length; i++) {
+    const s = sessions[i], first = byDate[s.date];
+    if (!first) { byDate[s.date] = s; continue; }
+    const have = new Set((first.trades || []).map(t => t.id));
+    first.trades = (first.trades || []).concat((s.trades || []).filter(t => !have.has(t.id)));
+    first.lossCount = first.trades.filter(t => t.outcome === 'Loss').length;
+    sessions.splice(i--, 1);
+  }
+  sessions.forEach(s => {
     (s.trades || []).forEach(t => {
+      if (s.date) t.date = s.date;                   // a trade is kept under the date it was taken
       if (t.session && SESSIONS.indexOf(t.session) === -1) t.session = sessionFor(t.time) || t.session;
       const m = t.mind;
       if (m && Object.keys(RENAMED).some(k => RENAMED[k][m[k]])) {
@@ -1378,11 +1461,15 @@ function normalizeSessions(sessions) {
 }
 
 let _clockLast = '';
+let _dayLast = '';
 function tickClock() {
   const n = nyParts();
   const t = n.time;
   if (t === _clockLast) return;
   _clockLast = t;
+  const day = tradingDayOf(nyDate(n).toDateString(), t.slice(0, 5));
+  if (_dayLast && day !== _dayLast) { deriveToday(); refreshViews(); }
+  _dayLast = day;
   const s = marketClosed(n.day, t.slice(0, 5)) ? 'Market Closed' : pickSessionFor(t.slice(0, 5));
   // each digit sits in a fixed-width slot so the clock never jiggles as the seconds change
   if ($('clock-t')) $('clock-t').innerHTML = t.replace(/\d/g, '<span class="d">$&</span>');
@@ -1506,7 +1593,7 @@ async function logTrade() {
     trade = Object.assign({}, prev || {}, f, { id: editing.id, date: editing.date });
   } else {
     if (!_pendingId) _pendingId = Date.now();
-    trade = Object.assign({ id: _pendingId, date: todayStr() }, f);
+    trade = Object.assign({ id: _pendingId, date: placedDate(f.time) }, f);
   }
 
   setSaving(true);
@@ -1523,8 +1610,8 @@ async function logTrade() {
   }
   renderDots();
   clearForm();
-  const now = new Date();
-  if (_calYear !== now.getFullYear() || _calMonth !== now.getMonth()) calGoToday();
+  const td = new Date(tradingDayOf(trade.date, trade.time));
+  if (!isNaN(td) && (_calYear !== td.getFullYear() || _calMonth !== td.getMonth())) { _calYear = td.getFullYear(); _calMonth = td.getMonth(); _calSelected = null; }
   sw('home');
 }
 
@@ -1572,7 +1659,7 @@ function editTrade(id, date) {
   $('log-submit-btn').textContent = 'Save changes';
   $('clear-btn').hidden = true;
   $('cancel-edit-btn').hidden = false;
-  $('editing-text').textContent = 'Your ' + (t.time ? t.time + ' ' : '') + 'trade from ' + shortDate(date);
+  $('editing-text').textContent = 'Your ' + (t.time ? t.time + ' ' : '') + 'trade from ' + shortDate(tradingDayOf(date, t.time));
   $('editing-text').hidden = false;
   fitLog();
 }
@@ -1598,7 +1685,7 @@ async function deleteTradeFrom(id, date, btn) {
     return;
   }
   renderDots();
-  if (!S.allSessions.find(s => s.date === date)) _calSelected = null;
+  if (_calSelected && !sessionMap()[_calSelected]) _calSelected = null;
   renderCalendar();
 }
 
@@ -1654,8 +1741,8 @@ function tradeHTML(t, date, single) {
   h += '<span class="tr-out">' + (t.outcome ? '<span class="tag ' + oc + '">' + esc(t.outcome) + '</span>' : '') + '</span>';
   h += '<div class="tr-end">';
   if (t.pnl !== null && t.pnl !== undefined) h += '<span class="tr-pnl ' + pnlClass(t.pnl) + '">' + money(t.pnl) + '</span>';
-  h += '<button class="tr-btn edit" data-edit-trade="' + t.id + '" data-date="' + esc(date) + '">Edit</button>';
-  h += '<button class="tr-btn del" data-del-trade="' + t.id + '" data-date="' + esc(date) + '">Delete</button>';
+  h += '<button class="tr-btn edit" data-edit-trade="' + t.id + '" data-date="' + esc(t.date || date) + '">Edit</button>';
+  h += '<button class="tr-btn del" data-del-trade="' + t.id + '" data-date="' + esc(t.date || date) + '">Delete</button>';
   h += '</div></div>';
   if (body) h += '<div class="tr-more"><div class="tr-inner"><div class="tr-grid">' + body + '</div></div></div>';
   return h + '</li>';
@@ -1679,7 +1766,7 @@ let _calSelected = null;
 
 function calPrev() { _calMonth--; if (_calMonth < 0) { _calMonth = 11; _calYear--; } _calSelected = null; renderCalendar(); }
 function calNext() { _calMonth++; if (_calMonth > 11) { _calMonth = 0; _calYear++; } _calSelected = null; renderCalendar(); }
-function calGoToday() { const n = new Date(); _calYear = n.getFullYear(); _calMonth = n.getMonth(); _calSelected = null; renderCalendar(); }
+function calGoToday() { const n = new Date(currentTradingDay()); _calYear = n.getFullYear(); _calMonth = n.getMonth(); _calSelected = null; renderCalendar(); }
 function calSelectDay(k) {
   _calSelected = (_calSelected === k) ? null : k;
   renderCalendar();
@@ -1693,12 +1780,19 @@ function calSelectDay(k) {
   }
 }
 
+function calKey(d) { return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); }
+// the journal by trading day: calendar key -> { date, trades }, each day's trades in the order they were taken
 function sessionMap() {
   const map = {};
-  S.allSessions.forEach(s => {
-    const d = new Date(s.date);
-    if (!isNaN(d)) map[d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate()] = s;
-  });
+  S.allSessions.forEach(s => (s.trades || []).forEach(t => {
+    const day = tradingDayOf(t.date || s.date, t.time);
+    const d = new Date(day);
+    if (isNaN(d)) return;
+    const k = calKey(d);
+    if (!map[k]) map[k] = { date: day, trades: [] };
+    map[k].trades.push(t);
+  }));
+  Object.keys(map).forEach(k => map[k].trades.sort(bySessionTime));
   return map;
 }
 
@@ -1707,7 +1801,7 @@ function renderCalendar() {
   if (!label) return;
   label.textContent = new Date(_calYear, _calMonth, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const map = sessionMap();
-  const now = new Date();
+  const now = new Date(currentTradingDay());       // today is the trading day that's on now
   const isNow = _calYear === now.getFullYear() && _calMonth === now.getMonth();
   const dim = new Date(_calYear, _calMonth + 1, 0).getDate();
 
@@ -1790,7 +1884,7 @@ let _fitFrame = 0;
 window.addEventListener('resize', () => { cancelAnimationFrame(_fitFrame); _fitFrame = requestAnimationFrame(fitCalendar); });
 
 function dayPanelHTML(sess) {
-  const tr = (sess.trades || []).slice().sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  const tr = (sess.trades || []).slice().sort(bySessionTime);
   if (!tr.length) return '';
   const net = tr.reduce((a, t) => a + (t.pnl || 0), 0);
   const w = tr.filter(t => t.outcome === 'Win').length;
@@ -1809,12 +1903,58 @@ function dayPanelHTML(sess) {
 // ══════════════════════════════════════════════════════════════════
 // ANALYTICS
 // ══════════════════════════════════════════════════════════════════
-function allTrades() {
+// every trade in the order it was taken, by trading day; with from/to, only the trading days from `from` up to `to`
+function allTrades(from, to, map) {
   const out = [];
-  S.allSessions.slice().sort((a, b) => new Date(a.date) - new Date(b.date)).forEach(s => {
-    (s.trades || []).slice().sort((a, b) => (a.time || '').localeCompare(b.time || '')).forEach(t => out.push(t));
+  Object.values(map || sessionMap()).sort((a, b) => new Date(a.date) - new Date(b.date)).forEach(s => {
+    const d = new Date(s.date);
+    if (from && !(d >= from && d < to)) return;
+    s.trades.forEach(t => out.push(t));
   });
   return out;
+}
+
+// What Analytics covers: every trade (the default), or one year, month or week of trading days at a time.
+// Weeks run Monday to Friday. The arrows stop at the first trade and at the trading day that's on now.
+let _anSpan = 'all';
+let _anFrom = null;                              // first day of the year/month/week on show (null = the latest)
+function spanStart(span, d) {
+  if (span === 'year') return new Date(d.getFullYear(), 0, 1);
+  if (span === 'month') return new Date(d.getFullYear(), d.getMonth(), 1);
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return addDays(day, -((day.getDay() + 6) % 7));
+}
+function spanShift(span, from, n) {
+  if (span === 'year') return new Date(from.getFullYear() + n, 0, 1);
+  if (span === 'month') return new Date(from.getFullYear(), from.getMonth() + n, 1);
+  return addDays(from, 7 * n);
+}
+function spanName(span, from) {
+  if (span === 'year') return String(from.getFullYear());
+  if (span === 'month') return from.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const fri = addDays(from, 4);
+  const a = from.toLocaleDateString('en-US', { month: 'short' }), b = fri.toLocaleDateString('en-US', { month: 'short' });
+  return a + ' ' + from.getDate() + ' – ' + (b === a ? '' : b + ' ') + fri.getDate() +
+    (fri.getFullYear() === latestTradingDay().getFullYear() ? '' : ', ' + fri.getFullYear());
+}
+function anFrom() { return _anFrom || spanStart(_anSpan, latestTradingDay()); }
+function anSpan(span) { _anSpan = span; _anFrom = null; renderAnalytics(); }
+function anStep(n) { _anFrom = spanShift(_anSpan, anFrom(), n); renderAnalytics(); }
+function renderSpan(map, from, to, name) {
+  document.querySelectorAll('#span-pick button').forEach(b => {
+    const on = b.dataset.span === _anSpan;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+  $('an-all').hidden = !!from;
+  $('an-step').hidden = !from;
+  if (!from) return;
+  const first = Object.values(map).reduce((m, s) => { const d = new Date(s.date); return !m || d < m ? d : m; }, null);
+  $('an-name').textContent = name;
+  $('an-prev').disabled = !(first && first < from);
+  $('an-next').disabled = to > latestTradingDay();
+  $('an-prev').setAttribute('aria-label', 'Previous ' + _anSpan);
+  $('an-next').setAttribute('aria-label', 'Next ' + _anSpan);
 }
 
 function fig(v, k, cls, hero) {
@@ -1845,7 +1985,7 @@ function groupBars(trades, keyFn, order) {
   return keys.map(k => barRow(k, g[k].w, g[k].n)).join('');
 }
 
-function equityCurveSVG(trades) {
+function equityCurveSVG(trades, empty) {
   let run = 0;
   const pts = [0];
   trades.forEach(t => { run += (t.pnl || 0); pts.push(run); });
@@ -1853,7 +1993,7 @@ function equityCurveSVG(trades) {
   if (pts.length < 2) {   // no trades yet: just the flat starting line
     return '<div class="curve"><svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">' +
       '<line x1="0" x2="' + W + '" y1="' + (H / 2) + '" y2="' + (H / 2) + '" style="stroke:var(--line-2);stroke-width:1;stroke-dasharray:4 4" vector-effect="non-scaling-stroke"/></svg>' +
-      '<p class="curve-empty">Your curve starts with your first trade.</p></div>';
+      '<p class="curve-empty">' + esc(empty || 'Your curve starts with your first trade.') + '</p></div>';
   }
   const min = Math.min.apply(null, pts), max = Math.max.apply(null, pts);
   const span = (max - min) || 1;
@@ -1872,7 +2012,12 @@ function equityCurveSVG(trades) {
 
 function renderAnalytics() {
   const box = $('analytics-content');
-  const all = allTrades();
+  const map = sessionMap();
+  let from = null, to = null, name = '';
+  if (_anSpan !== 'all') { from = anFrom(); to = spanShift(_anSpan, from, 1); name = spanName(_anSpan, from); }
+  renderSpan(map, from, to, name);
+  const all = allTrades(from, to, map);
+  const none = !from ? '' : _anSpan === 'week' ? 'No trades the week of ' + from.toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) + '.' : 'No trades in ' + name + '.';
   const wins = all.filter(t => t.outcome === 'Win');
   const losses = all.filter(t => t.outcome === 'Loss');
   const net = all.reduce((a, t) => a + (t.pnl || 0), 0);
@@ -1887,7 +2032,7 @@ function renderAnalytics() {
     fig(wins.length ? money(avg(wins)) : '—', 'Average win', wins.length ? 'pos' : '') +
     fig(losses.length ? money(avg(losses)) : '—', 'Average loss', losses.length ? 'neg' : '') +
     '</div>';
-  h += '<div class="chart"><div class="chart-head"><h2 class="block-title">Equity curve</h2><span>' + (all.length ? all.length + (all.length === 1 ? ' trade' : ' trades') : 'No trades yet') + '</span></div>' + equityCurveSVG(all) + '</div>';
+  h += '<div class="chart"><div class="chart-head"><h2 class="block-title">Equity curve</h2><span>' + (all.length ? all.length + (all.length === 1 ? ' trade' : ' trades') : from ? 'No trades' : 'No trades yet') + '</span></div>' + equityCurveSVG(all, none) + '</div>';
   h += '<div class="wr-block"><h2 class="block-title">Win rate</h2><div class="bds">' +
     '<div><h3 class="bd-title">Session</h3>' + groupBars(all, t => t.session, SESSIONS) + '</div>' +
     '<div><h3 class="bd-title">Headspace before entry</h3>' + groupBars(all, t => (t.mind || {}).before, opts('before')) + '</div>' +
@@ -2142,10 +2287,10 @@ async function exportJSON() {
 }
 
 async function exportCSV() {
-  const rows = [['Date', 'Time (NY)', 'Session', 'Direction', 'Outcome', 'P&L', 'Before', 'Conviction', 'Plan', 'After', 'Headspace', 'Notes', 'Next time']];
+  const rows = [['Trading day', 'Date', 'Time (NY)', 'Session', 'Direction', 'Outcome', 'P&L', 'Before', 'Conviction', 'Plan', 'After', 'Headspace', 'Notes', 'Next time']];
   allTrades().forEach(t => {
     const m = t.mind || {};
-    rows.push([t.date || '', t.time || '', t.session || '', t.dir || '', t.outcome || '',
+    rows.push([tradingDayOf(t.date, t.time), t.date || '', t.time || '', t.session || '', t.dir || '', t.outcome || '',
       (t.pnl === null || t.pnl === undefined) ? '' : t.pnl,
       m.before || '', m.conviction || '', m.plan || '', m.after || '', t.mindNotes || '', t.notes || '', t.improve || '']);
   });
@@ -2210,8 +2355,18 @@ function confirmClick(btn, fn) {
 }
 
 async function clearToday() {
-  try { await Store.clearDay(todayStr()); }
-  catch (e) { status('Couldn’t delete today’s trades. ' + storeErrorText(e), 'err'); return; }
+  // today's trading day can take in last night's date as well as today's: a date that holds only today's
+  // trades goes whole, and from a date shared with another trading day only today's trades go
+  const today = currentTradingDay(), jobs = [];
+  S.allSessions.forEach(s => {
+    const mine = (s.trades || []).filter(t => tradingDayOf(t.date || s.date, t.time) === today);
+    if (!mine.length) return;
+    if (mine.length === s.trades.length) jobs.push(() => Store.clearDay(s.date));
+    else mine.forEach(t => jobs.push(() => Store.deleteTrade(t.id, s.date)));
+  });
+  try { await Promise.all(jobs.map(job => job())); }
+  catch (e) { renderDots(); renderCalendar(); status('Couldn’t delete today’s trades. ' + storeErrorText(e), 'err'); return; }
+  if (_calSelected && !sessionMap()[_calSelected]) _calSelected = null;
   renderDots();
   renderCalendar();
   status('Today’s trades are deleted.', 'ok');
@@ -2348,7 +2503,7 @@ function init() {
   autoSession();
   loadData();
   renderDots();
-  renderCalendar();
+  calGoToday();
   ssRenderPreview();
   segSync();
   syncMind();
